@@ -1,4 +1,4 @@
--- Fly and Noclip Script with GUI for Roblox
+-- Fly and Noclip Script with GUI for Roblox (Überarbeitet)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -12,6 +12,9 @@ local camera = workspace.CurrentCamera
 local flying = false
 local flySpeed = 50
 local noclip = false
+local flyConnection = nil
+local bodyVelocity = nil
+local bodyGyro = nil
 
 -- Flugsteuerung
 local flyControls = {
@@ -144,6 +147,11 @@ UserInputService.InputChanged:Connect(function(input)
         SliderButton.Position = UDim2.new(pos, -5, 0, 5)
         flySpeed = math.floor(pos * 150 + 10)
         SpeedLabel.Text = "Geschwindigkeit: " .. flySpeed
+        
+        -- Geschwindigkeit während des Fluges aktualisieren
+        if flying and bodyVelocity then
+            bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        end
     end
 end)
 
@@ -180,7 +188,7 @@ end
 
 local function updateFlyControls(input, gameProcessed)
     if gameProcessed or not flying then return end
-    
+
     if input.KeyCode == Enum.KeyCode.W then
         flyControls.Forward = input.UserInputState == Enum.UserInputState.Begin
     elseif input.KeyCode == Enum.KeyCode.S then
@@ -197,7 +205,7 @@ local function updateFlyControls(input, gameProcessed)
 end
 
 local function fly()
-    if not flying then return end
+    if not flying or not bodyVelocity then return end
     
     local direction = Vector3.new()
     
@@ -224,7 +232,9 @@ local function fly()
         direction = direction.Unit
     end
     
-    humanoid:Move(direction * flySpeed)
+    -- BodyVelocity verwenden statt humanoid:Move für bessere Kontrolle
+    bodyVelocity.Velocity = direction * flySpeed
+    bodyGyro.CFrame = camera.CFrame
 end
 
 -- Toggle-Funktionen
@@ -232,14 +242,52 @@ local function toggleFly()
     flying = not flying
     
     if flying then
+        -- BodyVelocity und BodyGyro erstellen
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bodyVelocity.P = 10000
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.Parent = character:WaitForChild("HumanoidRootPart")
+        
+        bodyGyro = Instance.new("BodyGyro")
+        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bodyGyro.P = 10000
+        bodyGyro.CFrame = camera.CFrame
+        bodyGyro.Parent = character:WaitForChild("HumanoidRootPart")
+        
+        -- Schwerkraft deaktivieren
         humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-        toggleNoclip() -- Noclip automatisch beim Fliegen aktivieren
+        
+        -- Noclip automatisch aktivieren
+        if not noclip then
+            toggleNoclip()
+        end
+        
         FlyButton.Text = "Fliegen: AN"
         FlyButton.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-        RunService.Heartbeat:Connect(fly)
+        
+        -- Flugverbindung herstellen
+        flyConnection = RunService.Heartbeat:Connect(fly)
     else
+        -- Flugverbindung trennen
+        if flyConnection then
+            flyConnection:Disconnect()
+            flyConnection = nil
+        end
+        
+        -- BodyVelocity und BodyGyro entfernen
+        if bodyVelocity then
+            bodyVelocity:Destroy()
+            bodyVelocity = nil
+        end
+        if bodyGyro then
+            bodyGyro:Destroy()
+            bodyGyro = nil
+        end
+        
+        -- Normalen Zustand wiederherstellen
         humanoid:ChangeState(Enum.HumanoidStateType.Running)
-        toggleNoclip() -- Noclip deaktivieren wenn nicht mehr fliegt
+        
         FlyButton.Text = "Fliegen: AUS"
         FlyButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     end
@@ -264,7 +312,7 @@ UserInputService.InputEnded:Connect(updateFlyControls)
 -- Benachrichtigung
 local StarterGui = game:GetService("StarterGui")
 StarterGui:SetCore("ChatMakeSystemMessage", {
-    Text = "[FLY & NOCLIP] GUI geladen! Verwende die Schaltflächen oder Tasten F/N";
+    Text = "[FLY & NOCLIP] Überarbeitete Version geladen! Verwende die Schaltflächen oder Tasten F/N";
     Color = Color3.new(0, 1, 0);
     Font = Enum.Font.SourceSansBold;
     Size = 18;
